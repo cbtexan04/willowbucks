@@ -1,0 +1,117 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"log"
+
+	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/cbtexan04/willowbucks/db"
+	"github.com/cbtexan04/willowbucks/slack"
+)
+
+var m = map[string]int{
+	"willowbuck":   1,
+	"willowbuck5":  5,
+	"willowbuck10": 10,
+}
+
+const (
+	ModeCredit = iota
+	ModeTransfer
+)
+
+const (
+	mode                = ModeCredit
+	buckReaction        = "willowbuck"
+	notificationChannel = "CMNDNH38R"
+)
+
+var (
+	ErrUnknownReaction = errors.New("unknown reaction")
+	ErrUnknownSender   = errors.New("unknown sender")
+	ErrUnknownReceiver = errors.New("unknown receiver")
+)
+
+type ReactionEvent struct {
+	Event struct {
+		EventTs string `json:"event_ts"`
+		Item    struct {
+			Channel string `json:"channel"`
+			Ts      string `json:"ts"`
+			Type    string `json:"type"`
+		} `json:"item"`
+		ItemUser string `json:"item_user"`
+		Reaction string `json:"reaction"`
+		Type     string `json:"type"`
+		User     string `json:"user"`
+	} `json:"event"`
+}
+
+func Handler(event ReactionEvent) error {
+	var err error
+	var from, to *slack.SlackUser
+
+	amount, ok := m[event.Event.Reaction]
+	if !ok {
+		log.Println("unknown reaction")
+		return ErrUnknownReaction
+	}
+
+	log.Printf("%+v", event)
+
+	to, err = slack.UserLookup(event.Event.ItemUser)
+	if err != nil {
+		return err
+	} else if to.User.ID == "" {
+		return ErrUnknownReceiver
+	}
+
+	from, err = slack.UserLookup(event.Event.User)
+	if err != nil {
+		return err
+	} else if from.User.ID == "" {
+		return ErrUnknownSender
+	}
+
+	log.Println("DEBUG ", from.User.ID, " - ", to.User.ID)
+
+	switch mode {
+	case ModeCredit:
+		err := db.Credit(amount, to.User.ID)
+		if err != nil {
+			log.Printf("Unable to credit %d to [%s]: %v", amount, to.User.ID, err)
+			return err
+		}
+	case ModeTransfer:
+		err := db.Transfer(amount, from.User.ID, to.User.ID)
+		if err != nil {
+			if _, broke := err.(db.InsufficientFundErr); broke {
+				notifyErr := slack.SendEphemeral(err.Error(), event.Event.User, event.Event.Item.Channel)
+				if notifyErr != nil {
+					log.Println("Unable to send notification:", notifyErr)
+				}
+			}
+
+			log.Printf("Unable to credit %d from [%s] to [%s]: %v", amount, from.User.ID, to.User.ID, err)
+			return err
+		}
+
+	default:
+		return errors.New("Invalid mode")
+	}
+
+	var msg string
+	if amount == 1 {
+		msg = fmt.Sprintf("%s sent a :willowbuck: to %s", from.User.RealName, to.User.RealName)
+	} else {
+		msg = fmt.Sprintf("%s sent %d :willowbuck: to %s", from.User.RealName, amount, to.User.RealName)
+	}
+
+	log.Println(msg)
+	return slack.PostChannel(msg, notificationChannel)
+}
+
+func main() {
+	lambda.Start(Handler)
+}

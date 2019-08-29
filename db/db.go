@@ -1,7 +1,8 @@
-package main
+package db
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -10,9 +11,19 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 )
 
-var db = dynamodb.New(session.New(), aws.NewConfig().WithRegion("us-east-1"))
+var ErrBroke = errors.New("insufficient funds")
 
-var ErrInsufficientFunds = errors.New("insufficient funds")
+type InsufficientFundErr struct {
+	wrapped     error
+	amount      int
+	userbalance int
+}
+
+func (e InsufficientFundErr) Error() string {
+	return fmt.Sprintf("Unable to send %d willowbucks (you have a balance of %d)", e.amount, e.userbalance)
+}
+
+var db = dynamodb.New(session.New(), aws.NewConfig().WithRegion("us-east-1"))
 
 const TableName = "WillowTreeBank"
 
@@ -21,7 +32,7 @@ type Account struct {
 	Balance int    `json:"balance"`
 }
 
-func getAccount(user string) (*Account, error) {
+func GetAccount(user string) (*Account, error) {
 	a := &Account{User: user}
 
 	// Prepare the input for the query.
@@ -47,8 +58,8 @@ func getAccount(user string) (*Account, error) {
 	return a, err
 }
 
-func getBalance(user string) (int, error) {
-	a, err := getAccount(user)
+func GetBalance(user string) (int, error) {
+	a, err := GetAccount(user)
 	if err != nil {
 		return -1, err
 	} else if a == nil {
@@ -60,6 +71,7 @@ func getBalance(user string) (int, error) {
 
 // Update our count for a user
 func updateAccount(a *Account) error {
+	// TODO: should account for race conditions here; consider a lock
 	input := &dynamodb.UpdateItemInput{
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":b": {
@@ -80,17 +92,17 @@ func updateAccount(a *Account) error {
 	return err
 }
 
-func handleExchange(amount int, from, to string) error {
-	fromUser, err := getAccount(from)
+func Transfer(amount int, from, to string) error {
+	fromUser, err := GetAccount(from)
 	if err != nil {
 		return err
 	}
 
 	if fromUser.Balance < amount {
-		return ErrInsufficientFunds
+		return InsufficientFundErr{amount: amount, userbalance: fromUser.Balance}
 	}
 
-	toUser, err := getAccount(to)
+	toUser, err := GetAccount(to)
 	if err != nil {
 		return err
 	}
@@ -105,11 +117,18 @@ func handleExchange(amount int, from, to string) error {
 
 	err = updateAccount(toUser)
 	if err != nil {
-		// TODO: issue here, because the from account got deducted, but
-		// we couldnt update the new account. Maybe add an alert and
-		// handle manually?
 		return err
 	}
 
 	return nil
+}
+
+func Credit(amount int, to string) error {
+	toUser, err := GetAccount(to)
+	if err != nil {
+		return err
+	}
+	toUser.Balance = (toUser.Balance + amount)
+
+	return updateAccount(toUser)
 }
