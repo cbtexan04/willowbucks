@@ -74,8 +74,6 @@ func Handler(event ReactionEvent) error {
 		return ErrUnknownSender
 	}
 
-	log.Println("DEBUG ", from.User.ID, " - ", to.User.ID)
-
 	switch mode {
 	case ModeCredit:
 		err := db.Credit(amount, to.User.ID)
@@ -101,11 +99,17 @@ func Handler(event ReactionEvent) error {
 		return errors.New("Invalid mode")
 	}
 
+	var channelMsg string
+	c, err := slack.ChannelLookup(event.Event.Item.Channel)
+	if err == nil {
+		channelMsg = fmt.Sprintf("in channel %s", c.Channel.Name)
+	}
+
 	var msg string
 	if amount == 1 {
-		msg = fmt.Sprintf("%s sent a :willowbuck: to %s", from.User.RealName, to.User.RealName)
+		msg = fmt.Sprintf("%s sent a :willowbuck: to %s %s", from.User.RealName, to.User.RealName, channelMsg)
 	} else {
-		msg = fmt.Sprintf("%s sent %d :willowbuck: to %s", from.User.RealName, amount, to.User.RealName)
+		msg = fmt.Sprintf("%s sent %d :willowbuck: to %s %s", from.User.RealName, amount, to.User.RealName, channelMsg)
 	}
 
 	log.Println(msg)
