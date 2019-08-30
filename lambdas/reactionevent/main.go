@@ -31,6 +31,7 @@ var (
 	ErrUnknownReaction = errors.New("unknown reaction")
 	ErrUnknownSender   = errors.New("unknown sender")
 	ErrUnknownReceiver = errors.New("unknown receiver")
+	ErrUnknownChannel  = errors.New("unknown channel")
 )
 
 type ReactionEvent struct {
@@ -56,6 +57,12 @@ func Handler(event ReactionEvent) error {
 	if !ok {
 		log.Println("unknown reaction")
 		return ErrUnknownReaction
+	}
+
+	channel := event.Event.Item.Channel
+	if channel == "" {
+		log.Println("unknown channel")
+		return ErrUnknownChannel
 	}
 
 	log.Printf("%+v", event)
@@ -100,7 +107,7 @@ func Handler(event ReactionEvent) error {
 	}
 
 	var channelMsg string
-	c, err := slack.ChannelLookup(event.Event.Item.Channel)
+	c, err := slack.ChannelLookup(channel)
 	if err == nil {
 		channelMsg = fmt.Sprintf("in channel %s", c.Channel.Name)
 	}
