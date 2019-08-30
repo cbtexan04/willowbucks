@@ -2,3 +2,4 @@
 	- maybe helper script(s) for user lookup by ID
 - prevent users from emojiing themselves
 - package tokens (dont commit to git)
+- handle the removing of willowbuck reaction
