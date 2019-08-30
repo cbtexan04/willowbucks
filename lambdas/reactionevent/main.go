@@ -36,6 +36,7 @@ var (
 	ErrUnknownSender   = errors.New("unknown sender")
 	ErrUnknownReceiver = errors.New("unknown receiver")
 	ErrUnknownChannel  = errors.New("unknown channel")
+	ErrSelfPromotion   = errors.New("Self-tipping requests are ignored")
 )
 
 type ReactionEvent struct {
@@ -83,6 +84,12 @@ func Handler(event ReactionEvent) error {
 		return err
 	} else if from.User.ID == "" {
 		return ErrUnknownSender
+	}
+
+	if to.User.ID == from.User.ID {
+		slack.SendEphemeral(ErrSelfPromotion.Error(), to.User.ID, channel)
+		log.Printf("%v: %+v", ErrSelfPromotion, event)
+		return ErrSelfPromotion
 	}
 
 	switch mode {
