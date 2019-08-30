@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/cbtexan04/willowbucks/db"
@@ -22,9 +23,12 @@ const (
 )
 
 const (
-	mode                = ModeCredit
-	buckReaction        = "willowbuck"
-	notificationChannel = "CMNDNH38R"
+	mode         = ModeCredit
+	buckReaction = "willowbuck"
+)
+
+var (
+	notificationChannel = os.Getenv("NOTIFY_CHANNEL")
 )
 
 var (

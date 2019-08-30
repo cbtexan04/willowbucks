@@ -3,13 +3,17 @@ package slack
 import (
 	"bytes"
 	"net/http"
+	"os"
 	"time"
 )
 
 const (
 	EphemeralHook = "https://slack.com/api/chat.postEphemeral"
 	ChannelHook   = "https://slack.com/api/chat.postMessage"
-	AccessToken   = ""
+)
+
+var (
+	AccessToken = os.Getenv("ACCESS_TOKEN")
 )
 
 func SendEphemeral(msg string, user string, channel string) error {
