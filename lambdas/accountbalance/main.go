@@ -13,7 +13,7 @@ func Handler(event AccountEvent) error {
 	// TODO: don't hardcode this
 	userID := ""
 
-	balance, err := db.GetBalance(userID)
+	balance, err := db.GetBalance(userID, db.DefaultBalanceCredit)
 	if err != nil {
 		log.Println("unable to lookup balance:", err)
 		return err

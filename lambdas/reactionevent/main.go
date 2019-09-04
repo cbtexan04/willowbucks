@@ -11,6 +11,10 @@ import (
 	"github.com/cbtexan04/willowbucks/slack"
 )
 
+const (
+	WelcomeMsg = "Congratulations! You have been given your first willowbuck! You can send and receive willowbucks by using the :willowbuck: reaction on another user's message!"
+)
+
 var m = map[string]int{
 	"willowbuck":   1,
 	"willowbuck5":  5,
@@ -64,13 +68,13 @@ func Handler(event ReactionEvent) error {
 		return ErrUnknownReaction
 	}
 
+	log.Printf("%+v", event)
+
 	channel := event.Event.Item.Channel
 	if channel == "" {
 		log.Println("unknown channel")
 		return ErrUnknownChannel
 	}
-
-	log.Printf("%+v", event)
 
 	to, err = slack.UserLookup(event.Event.ItemUser)
 	if err != nil {
@@ -92,15 +96,16 @@ func Handler(event ReactionEvent) error {
 		return ErrSelfPromotion
 	}
 
+	var userCreated bool
 	switch mode {
 	case ModeCredit:
-		err := db.Credit(amount, to.User.ID)
+		userCreated, err = db.Credit(amount, to.User.ID)
 		if err != nil {
 			log.Printf("Unable to credit %d to [%s]: %v", amount, to.User.ID, err)
 			return err
 		}
 	case ModeTransfer:
-		err := db.Transfer(amount, from.User.ID, to.User.ID)
+		userCreated, err = db.Transfer(amount, from.User.ID, to.User.ID)
 		if err != nil {
 			if _, broke := err.(db.InsufficientFundErr); broke {
 				notifyErr := slack.SendEphemeral(err.Error(), event.Event.User, event.Event.Item.Channel)
@@ -115,6 +120,14 @@ func Handler(event ReactionEvent) error {
 
 	default:
 		return errors.New("Invalid mode")
+	}
+
+	log.Println("New user created?", userCreated)
+	if userCreated {
+		notifyErr := slack.SendEphemeral(WelcomeMsg, event.Event.ItemUser, event.Event.Item.Channel)
+		if notifyErr != nil {
+			log.Println("Unable to send notification:", notifyErr)
+		}
 	}
 
 	var channelMsg string

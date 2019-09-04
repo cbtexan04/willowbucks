@@ -13,6 +13,11 @@ import (
 
 var ErrBroke = errors.New("insufficient funds")
 
+const (
+	DefaultBalanceCredit   = 0
+	DefaultBalanceTransfer = 5
+)
+
 type InsufficientFundErr struct {
 	wrapped     error
 	amount      int
@@ -30,9 +35,10 @@ const TableName = "WillowTreeBank"
 type Account struct {
 	User    string `json:"user"`
 	Balance int    `json:"balance"`
+	NewUser bool   `json:"-"`
 }
 
-func GetAccount(user string) (*Account, error) {
+func GetAccount(user string, newUserBalance int) (*Account, error) {
 	a := &Account{User: user}
 
 	// Prepare the input for the query.
@@ -49,8 +55,8 @@ func GetAccount(user string) (*Account, error) {
 	if err != nil {
 		return a, err
 	} else if result.Item == nil {
-		// If no matching item is found return 5.
-		a.Balance = 5
+		a.Balance = newUserBalance
+		a.NewUser = true
 		return a, nil
 	}
 
@@ -58,8 +64,8 @@ func GetAccount(user string) (*Account, error) {
 	return a, err
 }
 
-func GetBalance(user string) (int, error) {
-	a, err := GetAccount(user)
+func GetBalance(user string, defaultBalance int) (int, error) {
+	a, err := GetAccount(user, defaultBalance)
 	if err != nil {
 		return -1, err
 	} else if a == nil {
@@ -92,19 +98,19 @@ func updateAccount(a *Account) error {
 	return err
 }
 
-func Transfer(amount int, from, to string) error {
-	fromUser, err := GetAccount(from)
+func Transfer(amount int, from, to string) (createdUser bool, err error) {
+	fromUser, err := GetAccount(from, DefaultBalanceTransfer)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if fromUser.Balance < amount {
-		return InsufficientFundErr{amount: amount, userbalance: fromUser.Balance}
+		return false, InsufficientFundErr{amount: amount, userbalance: fromUser.Balance}
 	}
 
-	toUser, err := GetAccount(to)
+	toUser, err := GetAccount(to, DefaultBalanceTransfer)
 	if err != nil {
-		return err
+		return toUser.NewUser, err
 	}
 
 	fromUser.Balance = (fromUser.Balance - amount)
@@ -112,23 +118,23 @@ func Transfer(amount int, from, to string) error {
 
 	err = updateAccount(fromUser)
 	if err != nil {
-		return err
+		return toUser.NewUser, err
 	}
 
 	err = updateAccount(toUser)
 	if err != nil {
-		return err
+		return toUser.NewUser, err
 	}
 
-	return nil
+	return toUser.NewUser, nil
 }
 
-func Credit(amount int, to string) error {
-	toUser, err := GetAccount(to)
+func Credit(amount int, to string) (createdUser bool, err error) {
+	toUser, err := GetAccount(to, DefaultBalanceCredit)
 	if err != nil {
-		return err
+		return toUser.NewUser, err
 	}
 	toUser.Balance = (toUser.Balance + amount)
 
-	return updateAccount(toUser)
+	return toUser.NewUser, updateAccount(toUser)
 }
