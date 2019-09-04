@@ -1,3 +1,4 @@
 - get balance for users
 	- maybe helper script(s) for user lookup by ID
 - handle the removing of willowbuck reaction
+- deploy lambda using commandline
