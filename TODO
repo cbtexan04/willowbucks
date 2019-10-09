@@ -1,4 +1,3 @@
-- get balance for users
-	- maybe helper script(s) for user lookup by ID
+- get balance for users by /balance <user_id>
 - handle the removing of willowbuck reaction
 - deploy lambda using commandline

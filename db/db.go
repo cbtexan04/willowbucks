@@ -3,12 +3,14 @@ package db
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
+	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
 )
 
 var ErrBroke = errors.New("insufficient funds")
@@ -137,4 +139,51 @@ func Credit(amount int, to string) (createdUser bool, err error) {
 	toUser.Balance = (toUser.Balance + amount)
 
 	return toUser.NewUser, updateAccount(toUser)
+}
+
+func GetTopBalances(limit int) ([]Account, error) {
+	topBalances := make([]Account, 0)
+
+	proj := expression.NamesList(expression.Name("user"), expression.Name("balance"))
+
+	expr, err := expression.NewBuilder().WithProjection(proj).Build()
+	if err != nil {
+		return topBalances, err
+	}
+	// Build the query input parameters
+	params := &dynamodb.ScanInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		FilterExpression:          expr.Filter(),
+		ProjectionExpression:      expr.Projection(),
+		TableName:                 aws.String(TableName),
+	}
+
+	// Make the DynamoDB Query API call
+	result, err := db.Scan(params)
+	if err != nil {
+		return topBalances, err
+	}
+
+	for _, i := range result.Items {
+		a := Account{}
+		err = dynamodbattribute.UnmarshalMap(i, &a)
+
+		if err != nil {
+			return topBalances, err
+		}
+
+		topBalances = append(topBalances, a)
+	}
+
+	// sort the accounts by balance, then truncate to the num of accounts desired
+	sort.Slice(topBalances, func(i, j int) bool {
+		return topBalances[i].Balance > topBalances[j].Balance
+	})
+
+	if len(topBalances) > limit {
+		topBalances = topBalances[0:limit]
+	}
+
+	return topBalances, nil
 }

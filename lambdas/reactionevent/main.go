@@ -24,11 +24,13 @@ var m = map[string]int{
 const (
 	ModeCredit = iota
 	ModeTransfer
+	CurrentMode = ModeCredit
 )
 
 const (
-	mode         = ModeCredit
-	buckReaction = "willowbuck"
+	ActionAddedEvent   = "reaction_added"
+	ActionRemovedEvent = "reaction_removed"
+	buckReaction       = "willowbuck"
 )
 
 var (
@@ -36,11 +38,12 @@ var (
 )
 
 var (
-	ErrUnknownReaction = errors.New("unknown reaction")
-	ErrUnknownSender   = errors.New("unknown sender")
-	ErrUnknownReceiver = errors.New("unknown receiver")
-	ErrUnknownChannel  = errors.New("unknown channel")
-	ErrSelfPromotion   = errors.New("Self-tipping requests are ignored")
+	ErrUnknownReaction  = errors.New("unknown reaction")
+	ErrUnknownSender    = errors.New("unknown sender")
+	ErrUnknownReceiver  = errors.New("unknown receiver")
+	ErrUnknownChannel   = errors.New("unknown channel")
+	ErrSelfPromotion    = errors.New("Self-tipping requests are ignored")
+	ErrUnknownEventType = errors.New("unknown event type")
 )
 
 type ReactionEvent struct {
@@ -59,16 +62,32 @@ type ReactionEvent struct {
 }
 
 func Handler(event ReactionEvent) error {
+	switch event.Event.Type {
+	case ActionAddedEvent:
+		return handleReactionAdded(event)
+	case ActionRemovedEvent:
+		return handleReactionRemoved(event)
+	default:
+		return ErrUnknownEventType
+	}
+}
+
+func handleReactionRemoved(event ReactionEvent) error {
+	// TODO
+	return nil
+}
+
+func handleReactionAdded(event ReactionEvent) error {
 	var err error
 	var from, to *slack.SlackUser
+
+	log.Printf("%+v", event)
 
 	amount, ok := m[event.Event.Reaction]
 	if !ok {
 		log.Println("unknown reaction")
 		return ErrUnknownReaction
 	}
-
-	log.Printf("%+v", event)
 
 	channel := event.Event.Item.Channel
 	if channel == "" {
@@ -97,7 +116,7 @@ func Handler(event ReactionEvent) error {
 	}
 
 	var userCreated bool
-	switch mode {
+	switch CurrentMode {
 	case ModeCredit:
 		userCreated, err = db.Credit(amount, to.User.ID)
 		if err != nil {
@@ -122,7 +141,6 @@ func Handler(event ReactionEvent) error {
 		return errors.New("Invalid mode")
 	}
 
-	log.Println("New user created?", userCreated)
 	if userCreated {
 		notifyErr := slack.SendEphemeral(WelcomeMsg, event.Event.ItemUser, event.Event.Item.Channel)
 		if notifyErr != nil {
@@ -132,15 +150,23 @@ func Handler(event ReactionEvent) error {
 
 	var channelMsg string
 	c, err := slack.ChannelLookup(channel)
-	if err == nil {
-		channelMsg = fmt.Sprintf("in channel %s", c.Channel.Name)
+	if err == nil && c.Channel.Name != "" {
+		channelMsg = fmt.Sprintf("in channel #%s", c.Channel.Name)
 	}
 
 	var msg string
 	if amount == 1 {
-		msg = fmt.Sprintf("%s sent a :willowbuck: to %s %s", from.User.RealName, to.User.RealName, channelMsg)
+		if userCreated {
+			msg = fmt.Sprintf("%s sent %s their first :willowbuck: %s", from.User.RealName, to.User.RealName, channelMsg)
+		} else {
+			msg = fmt.Sprintf("%s sent a :willowbuck: to %s %s", from.User.RealName, to.User.RealName, channelMsg)
+		}
 	} else {
-		msg = fmt.Sprintf("%s sent %d :willowbuck: to %s %s", from.User.RealName, amount, to.User.RealName, channelMsg)
+		if userCreated {
+			msg = fmt.Sprintf("%s sent %s their first %d :willowbuck: %s", from.User.RealName, to.User.RealName, amount, channelMsg)
+		} else {
+			msg = fmt.Sprintf("%s sent %d :willowbuck: to %s %s", from.User.RealName, amount, to.User.RealName, channelMsg)
+		}
 	}
 
 	log.Println(msg)
