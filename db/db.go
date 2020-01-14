@@ -141,6 +141,23 @@ func Credit(amount int, to string) (createdUser bool, err error) {
 	return toUser.NewUser, updateAccount(toUser)
 }
 
+func Debit(amount int, user string) error {
+	toUser, err := GetAccount(user, DefaultBalanceCredit)
+	if err != nil {
+		return err
+	}
+
+	// If this is a new user or if would put the user into the negative, do nothing
+	if toUser.NewUser || (toUser.Balance-amount) < 0 {
+		// TODO: do we want to funnel this up as a non nil error?
+		return nil
+	}
+
+	toUser.Balance = (toUser.Balance - amount)
+
+	return updateAccount(toUser)
+}
+
 func GetTopBalances(limit int) ([]Account, error) {
 	topBalances := make([]Account, 0)
 

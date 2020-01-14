@@ -22,20 +22,12 @@ var m = map[string]int{
 }
 
 const (
-	ModeCredit = iota
-	ModeTransfer
-	CurrentMode = ModeCredit
-)
-
-const (
 	ActionAddedEvent   = "reaction_added"
 	ActionRemovedEvent = "reaction_removed"
 	buckReaction       = "willowbuck"
 )
 
-var (
-	notificationChannel = os.Getenv("NOTIFY_CHANNEL")
-)
+var notificationChannel = os.Getenv("NOTIFY_CHANNEL")
 
 var (
 	ErrUnknownReaction  = errors.New("unknown reaction")
@@ -45,6 +37,8 @@ var (
 	ErrSelfPromotion    = errors.New("Self-tipping requests are ignored")
 	ErrUnknownEventType = errors.New("unknown event type")
 )
+
+type reactionHandler func(ReactionEvent) error
 
 type ReactionEvent struct {
 	Event struct {
@@ -62,6 +56,20 @@ type ReactionEvent struct {
 }
 
 func Handler(event ReactionEvent) error {
+	if _, ok := m[event.Event.Reaction]; !ok {
+		// err, not a reaction we care about
+	} else if event.Event.User == "" {
+		// err, from user
+	} else if event.Event.ItemUser == "" {
+		// err, to user
+	} else if event.Event.ItemUser == event.Event.User {
+		// err, same user action
+	} else if event.Event.Item.Channel == "" {
+		// err, channel
+	}
+
+	// TODO: get the users/channel info, then pass along to the handler
+
 	switch event.Event.Type {
 	case ActionAddedEvent:
 		return handleReactionAdded(event)
@@ -73,8 +81,45 @@ func Handler(event ReactionEvent) error {
 }
 
 func handleReactionRemoved(event ReactionEvent) error {
-	// TODO
-	return nil
+	// Not a reaction we care about
+	if _, ok := m[event.Event.Reaction]; !ok {
+		return nil
+	}
+
+	// TODO: come back and made this dynamic
+	amount := 1
+
+	to, err := slack.UserLookup(event.Event.ItemUser)
+	if err != nil {
+		return err
+	} else if to.User.ID == "" {
+		return ErrUnknownReceiver
+	}
+
+	from, err := slack.UserLookup(event.Event.User)
+	if err != nil {
+		return err
+	} else if from.User.ID == "" {
+		return ErrUnknownSender
+	}
+
+	channel := event.Event.Item.Channel
+	channelInfo, err := slack.ChannelLookup(channel)
+	if err != nil || channelInfo.Channel.Name == "" {
+		log.Println("unknown channel")
+		return ErrUnknownChannel
+	}
+
+	err = db.Debit(amount, to.User.ID)
+	if err != nil {
+		log.Printf("Unable to debit %d from [%s]: %v", amount, to.User.ID, err)
+		return err
+	}
+
+	msg := fmt.Sprintf("%s removed their :willowbuck: from %s in #%s", from.User.RealName, to.User.RealName, channelInfo.Channel.Name)
+
+	log.Println(msg)
+	return slack.PostChannel(msg, notificationChannel)
 }
 
 func handleReactionAdded(event ReactionEvent) error {
@@ -117,29 +162,10 @@ func handleReactionAdded(event ReactionEvent) error {
 	}
 
 	var userCreated bool
-	switch CurrentMode {
-	case ModeCredit:
-		userCreated, err = db.Credit(amount, to.User.ID)
-		if err != nil {
-			log.Printf("Unable to credit %d to [%s]: %v", amount, to.User.ID, err)
-			return err
-		}
-	case ModeTransfer:
-		userCreated, err = db.Transfer(amount, from.User.ID, to.User.ID)
-		if err != nil {
-			if _, broke := err.(db.InsufficientFundErr); broke {
-				notifyErr := slack.SendEphemeral(err.Error(), event.Event.User, event.Event.Item.Channel)
-				if notifyErr != nil {
-					log.Println("Unable to send notification:", notifyErr)
-				}
-			}
-
-			log.Printf("Unable to credit %d from [%s] to [%s]: %v", amount, from.User.ID, to.User.ID, err)
-			return err
-		}
-
-	default:
-		return errors.New("Invalid mode")
+	userCreated, err = db.Credit(amount, to.User.ID)
+	if err != nil {
+		log.Printf("Unable to credit %d to [%s]: %v", amount, to.User.ID, err)
+		return err
 	}
 
 	if userCreated {
