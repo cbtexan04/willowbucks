@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	WelcomeMsg = "Congratulations! You have been given your first willowbuck! You can send and receive willowbucks by using the :willowbuck: reaction on another user's message!"
+	WelcomeMsg = "Congratulations! You have been given your first willowbuck! You can send and receive willowbucks by using the :willowbuck: reaction on another user's message!\n\nYou can use the following commands at any time:\n/balance - check your current :willowbuck: balance\n/balances-top - see the top :willowbuck: earners"
 )
 
 var m = map[string]int{
@@ -90,7 +90,8 @@ func handleReactionAdded(event ReactionEvent) error {
 	}
 
 	channel := event.Event.Item.Channel
-	if channel == "" {
+	channelInfo, err := slack.ChannelLookup(channel)
+	if err != nil || channelInfo.Channel.Name == "" {
 		log.Println("unknown channel")
 		return ErrUnknownChannel
 	}
@@ -149,9 +150,8 @@ func handleReactionAdded(event ReactionEvent) error {
 	}
 
 	var channelMsg string
-	c, err := slack.ChannelLookup(channel)
-	if err == nil && c.Channel.Name != "" {
-		channelMsg = fmt.Sprintf("in channel #%s", c.Channel.Name)
+	if err == nil && channelInfo.Channel.Name != "" {
+		channelMsg = fmt.Sprintf("in channel #%s", channelInfo.Channel.Name)
 	}
 
 	var msg string

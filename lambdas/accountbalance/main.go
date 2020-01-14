@@ -82,8 +82,7 @@ func Handler(event AccountEvent) (*Response, error) {
 
 	log.Println(m["command"])
 
-	// TODO: add a slash to the command
-	if m["command"] == "/balance" {
+	if m["command"] == "/willowbuck-balance" {
 		return myBalance(m["user_id"])
 	} else {
 		return topBalances(event)
