@@ -42,8 +42,6 @@ func topBalances(event AccountEvent) (*Response, error) {
 		return nil, err
 	}
 
-	// TODO: user lookup on top balances
-
 	resp := "Here's the top users by :willowbuck: balance:"
 	for _, a := range accounts {
 		u, err := slack.UserLookup(a.User)

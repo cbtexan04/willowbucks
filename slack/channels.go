@@ -10,6 +10,7 @@ const ChannelLookupHook = "https://slack.com/api/channels.info"
 
 type SlackChannel struct {
 	Channel struct {
+		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"channel"`
 }
