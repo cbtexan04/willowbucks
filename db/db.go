@@ -198,7 +198,7 @@ func GetTopBalances(limit int) ([]Account, error) {
 		return topBalances[i].Balance > topBalances[j].Balance
 	})
 
-	if len(topBalances) > limit {
+	if limit > 0 && len(topBalances) > limit {
 		topBalances = topBalances[0:limit]
 	}
 

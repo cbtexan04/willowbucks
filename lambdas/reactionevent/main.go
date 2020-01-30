@@ -18,8 +18,12 @@ You can send and receive willowbucks by using the :willowbuck: reaction on
 another user's message!
 
 You can use the following commands at any time:
-/willowbuck-balance      - check your current :willowbuck: balance
-/willowbuck-top-balances - see the top :willowbuck: earners`
+/willowbuck-balance       - check your current :willowbuck: balance
+/willowbuck-balance @user - check someone elses' :willowbuck: balance
+/willowbuck-top-balances  - see the top :willowbuck: earners
+
+Read more here:
+https://wiki.willowtreeapps.com/display/~will.taylor/WillowBucks+Overview`
 
 // Use a map to correlate the reaction name to an amount. This would allow
 // us to add additional reactions with varying willowbuck amounts.

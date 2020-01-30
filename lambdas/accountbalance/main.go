@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -13,6 +14,8 @@ import (
 
 const topBalanceLimit = 5
 
+var ErrUserNotFound = errors.New("user not found")
+
 type AccountEvent struct {
 	Body string `json:"body"`
 }
@@ -23,7 +26,37 @@ type Response struct {
 	Body       string            `json:"body"`
 }
 
-func myBalance(userID string) (*Response, error) {
+// TODO: this is really not optimal. We have to do a lookup
+// in our database for UUIDs we already know about, and THEN
+// do a query to slack for each user to see what their
+// name is. Two inefficiencies, double the effort/cost. Since
+// user NAMES won't change, can we store that in the dynamo
+// datastore along with the account balance?
+
+// Given a user's name, attempt to find their userID
+func getUserIdFromText(name string) (string, error) {
+	name = strings.TrimPrefix(name, "@")
+	accounts, err := db.GetTopBalances(-1)
+	if err != nil {
+		return "", err
+	}
+
+	for _, a := range accounts {
+		u, err := slack.UserLookup(a.User)
+		if err != nil {
+			log.Println("Unable to lookup user %s: %v", a.User, err)
+			continue
+		}
+
+		if u.User.Name == name {
+			return u.User.ID, nil
+		}
+	}
+
+	return "", ErrUserNotFound
+}
+
+func getBalanceForUser(userID string) (*Response, error) {
 	balance, err := db.GetBalance(userID, db.DefaultBalanceCredit)
 	if err != nil {
 		log.Println("unable to lookup balance:", err)
@@ -78,12 +111,36 @@ func Handler(event AccountEvent) (*Response, error) {
 		}
 	}
 
-	log.Println(m["command"])
+	// TODO: we can clean some of this up if we were able to abstract out
+	// the response body (get balance for user should NOT return the response
+	// but rather the amount. Then in our handler we can make the response body
+	switch {
+	case m["text"] != "": // get user balance by display name
+		id, err := getUserIdFromText(m["text"])
+		if err == ErrUserNotFound {
+			// Not an issue, the user just doesn't exist, so balance is 0
+			return &Response{
+				StatusCode: 200,
+				Body:       fmt.Sprintf("%s currently has 0 :willowbuck:", m["text"]),
+			}, nil
+		} else if err != nil {
+			return nil, err
+		}
 
-	if m["command"] == "/willowbuck-balance" {
-		return myBalance(m["user_id"])
-	} else {
-		return topBalances(event)
+		balance, err := db.GetBalance(id, db.DefaultBalanceCredit)
+		if err != nil {
+			log.Println("unable to lookup balance:", err)
+			return nil, err
+		}
+
+		return &Response{
+			StatusCode: 200,
+			Body:       fmt.Sprintf("%s currently has %d :willowbuck:", m["text"], balance),
+		}, nil
+	case m["command"] == "/willowbuck-balance": // get calling user's balance
+		return getBalanceForUser(m["user_id"])
+	default:
+		return topBalances(event) // return top balances
 	}
 }
 
